@@ -6,6 +6,8 @@
 
 #define DT_NAME "float"
 
+#define MIN(a,b) ( ((a) < (b)) ? (a) : (b) )
+
 typedef float U_base;
 typedef float M_base;
 typedef float B_base;

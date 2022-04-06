@@ -116,20 +116,25 @@ int check_result(
 {
     if (mpi_world_rank != 0) return 0;
 
-#ifdef USE_OPENMP
-#pragma omp parallel for
-#endif
 #ifdef USE_OMPSS
-#pragma oss task for in(out[0;num_compounds]) out(errors_per_compound[0;num_compounds]) \
-                        node(nanos6_cluster_no_offload) chunksize(100) label("check_results")
+    const int chunksize = 100;
+    for (int c = 0; c < num_compounds; c += chunksize)
+    {
+        const int chunk_this_task = MIN(chunksize, num_compounds-c);
+        #pragma oss task in(out[c;chunk_this_task]) out(errors_per_compound[c;chunk_this_task]) \
+                         node(nanos6_cluster_no_offload) label("check_results")
+        for (int i = c; i < c+chunk_this_task; ++i)
+            errors_per_compound[i] = check_compound(i, out, ref);
+    }
+#pragma oss taskwait
+#else
+
+    /*  OpenMP / plain impl */
+#ifdef USE_OPENMP
+    #pragma omp parallel for
 #endif
     for (int c = 0; c < num_compounds; c++)
-    {
         errors_per_compound[c] = check_compound(c, out, ref);
-    }
-
-#ifdef USE_OMPSS
-#pragma oss taskwait
 #endif
 
     int total_errors = 0;
