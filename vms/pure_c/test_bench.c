@@ -27,8 +27,14 @@ void binary_file_into(const char *fname, size_t nelem, void *ptr)
 
     f = fopen(fname, "rb");
     assert(f);
-    n = fread(ptr, sizeof(float), nelem, f);
+    /** @note nanos6-argodsm: cannot fread to a
+     *        pointer pointing to global mem */
+    void* temp_ptr = malloc(nelem*sizeof(float));
+    n = fread(temp_ptr, sizeof(float), nelem, f);
     assert(n == nelem);
+
+    // move locally read data to global memory
+    memcpy(ptr, temp_ptr, nelem*sizeof(float));
 }
 
 float *binary_file(const char *fname, size_t nelem)
