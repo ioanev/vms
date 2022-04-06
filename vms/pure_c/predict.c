@@ -88,8 +88,8 @@ void predict_compounds(
         int node_id = (i / per_node) % num_nodes;
         if (i+per_node > end) per_node = end - i;
 
-#pragma oss task weakin(features[i;per_node]) weakin(*m) weakout(predictions[i;per_node]) \
-                 node(node_id) label("outer_predict_task")
+        #pragma oss task weakin(features[i;per_node]) weakin(*m) weakout(predictions[i;per_node]) \
+                         node(node_id) label("outer_predict_task")
         {
 
             const int chunksize = 100;

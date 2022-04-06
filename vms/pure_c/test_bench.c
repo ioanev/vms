@@ -29,30 +29,59 @@ void binary_file_into(const char *fname, size_t nelem, void *ptr)
     assert(f);
     /** @note nanos6-argodsm: cannot fread to a
      *        pointer pointing to global mem */
-    void* temp_ptr = malloc(nelem*sizeof(float));
+    void* temp_ptr = malloc(sizeof(float)*nelem);
     n = fread(temp_ptr, sizeof(float), nelem, f);
     assert(n == nelem);
 
     // move locally read data to global memory
-    memcpy(ptr, temp_ptr, nelem*sizeof(float));
+    memcpy(ptr, temp_ptr, sizeof(float)*nelem);
+    free(temp_ptr);
 }
 
-float *binary_file(const char *fname, size_t nelem)
+float *binary_file_malloc(const char *fname, size_t nelem)
 {
     void *ptr = malloc(sizeof(float) * nelem);
     binary_file_into(fname, nelem, ptr);
     return (float*)ptr;
 }
 
-#ifdef USE_OMPSS
-#pragma oss task out(out[0;num_compounds]) node(0) label("prepare_tb_input")
-#endif
+float *binary_file_lmalloc(const char *fname, size_t nelem)
+{
+    void *ptr = lmalloc(sizeof(float) * nelem, 0);
+    binary_file_into(fname, nelem, ptr);
+    return (float*)ptr;
+}
+
+//#ifdef USE_OMPSS
+//#pragma oss task out(out[0;num_compounds]) node(0) label("prepare_tb_input")
+//#endif
 void prepare_tb_input(
     int num_compounds,
     const float in[tb_num_compounds][num_features],
     F_base out[][num_features])
 {
     perf_start(__FUNCTION__);
+
+#ifdef USE_OMPSS
+    const int tb_num_compounds_var = tb_num_compounds;
+    const int num_nodes = nanos6_get_num_cluster_nodes();
+    for (int node_id = 0; node_id < num_nodes; ++node_id)
+    {
+        const int num_compounds_per_rank = num_compounds / num_nodes;
+        const int block_start = num_compounds_per_rank * node_id;
+
+        const int lo = block_start;
+        const int hi = block_start + num_compounds_per_rank;
+
+        #pragma oss task out(out[lo:hi-1]) in(in[0;tb_num_compounds_var]) \
+                         node(nanos6_cluster_no_offload) label("prepare_tb_input")
+        for (int c = lo; c < hi; c++)
+            for (int p = 0; p < num_features; p++)
+                out[c][p] = in [c%tb_num_compounds][p];
+    }
+
+#pragma oss taskwait
+#else
 
 #ifndef USE_ARGO
     const int lo = 0;
@@ -68,6 +97,7 @@ void prepare_tb_input(
     for (int c = lo; c < hi; c++)
         for (int p = 0; p < num_features; p++)
             out[c][p] = in [c%tb_num_compounds][p];
+#endif
 
     perf_end(__FUNCTION__);
 }
@@ -191,8 +221,8 @@ int main(int argc, char *argv[])
 
     printf("Reading binary files\n");
     struct Model *m = read_model();
-    float (*tb_input)[num_features] = (float (*)[num_features])binary_file("vms_tb_in.bin", tb_num_compounds * num_features);
-    float (*tb_ref)[num_proteins]   = (float (*)[num_proteins])binary_file("vms_tb_ref.bin", tb_num_compounds * num_proteins);
+    float (*tb_input)[num_features] = (float (*)[num_features])binary_file_lmalloc("vms_tb_in.bin", tb_num_compounds * num_features);
+    float (*tb_ref)[num_proteins]   = (float (*)[num_proteins])binary_file_malloc("vms_tb_ref.bin", tb_num_compounds * num_proteins);
 
     mpi_world_rank_0_print("  dt:    %s\n", DT_NAME);
     mpi_world_rank_0_print("  nrep:  %d\n", num_repeat);
