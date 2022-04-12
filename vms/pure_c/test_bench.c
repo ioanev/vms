@@ -64,6 +64,8 @@ void prepare_tb_input(
 
 #ifdef USE_OMPSS
     const int tb_num_compounds_var = tb_num_compounds;
+
+    const int num_tasks_per_node = 10;
     const int num_nodes = nanos6_get_num_cluster_nodes();
     const int num_compounds_per_node = num_compounds / num_nodes;
 
@@ -73,11 +75,24 @@ void prepare_tb_input(
         const int i = node_id * num_compounds_per_node;
         node_chunk(&num_compounds_this_node, node_id, num_nodes, num_compounds, i, num_compounds_per_node);
 
-        #pragma oss task out(out[i;num_compounds_this_node]) in(in[0;tb_num_compounds_var]) \
-                         node(node_id) label("prepare_tb_input")
-        for (int c = i; c < i+num_compounds_this_node; c++)
-            for (int p = 0; p < num_features; p++)
-                out[c][p] = in [c%tb_num_compounds][p];
+        #pragma oss task weakout(out[i;num_compounds_this_node]) weakin(in[0;tb_num_compounds_var]) \
+                         node(node_id) label("outer_prepare_tb_input")
+        {
+            const int num_compounds_per_task = num_compounds_this_node / num_tasks_per_node;
+            assert(num_compounds_per_task > 0);
+
+            for (int k = i; k < i+num_compounds_this_node; k += num_compounds_per_task)
+            {
+                int num_compounds_this_task;
+                task_chunk(&num_compounds_this_task, i+num_compounds_this_node, k, num_compounds_per_task);
+
+                #pragma oss task out(out[k;num_compounds_this_task]) in(in[0;tb_num_compounds_var]) \
+                                 node(nanos6_cluster_no_offload) label("inner_prepare_tb_input")
+                for (int c = k; c < k+num_compounds_this_task; ++c)
+                    for (int p = 0; p < num_features; ++p)
+                        out[c][p] = in [c%tb_num_compounds][p];
+            }
+        }
     }
 #else
 
