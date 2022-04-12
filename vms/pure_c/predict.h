@@ -33,17 +33,17 @@ typedef M_base M_arr[num_samples][num_latent];
 typedef B_base B_arr[num_samples][num_features][num_latent];
 
 struct Model {
-	U_arr U;
-	M_arr M;
-	B_arr B;
+    U_arr U;
+    M_arr M;
+    B_arr B;
 };
 
 void predict_compounds(
-		int start,
-		int num_compounds, 
-		const F_flx features,
-		      P_flx predictions,
-		const struct Model *m);
+        int start,
+        int num_compounds,
+        const F_flx features,
+              P_flx predictions,
+        const struct Model *m);
 
 /* MPI functions and variables */
 extern int mpi_world_size;
@@ -61,10 +61,10 @@ void send_predictions(int compound, const P_base data[num_proteins]);
 
 /* GASPI functions */
 enum {
-	features_seg = 0,
-	predictions_seg = 1, 
-	model_seg = 2,
-	errors_seg = 3
+    features_seg = 0,
+    predictions_seg = 1,
+    model_seg = 2,
+    errors_seg = 3
 };
 
 void *gaspi_malloc(int seg, unsigned long size);
@@ -72,5 +72,17 @@ void *gaspi_malloc(int seg, unsigned long size);
 /* OmpSS-2 */
 void *lmalloc(unsigned long size, int seg);
 void *dmalloc(unsigned long size, int seg);
+
+void node_chunk(int* chunk,
+        const int node_id,
+        const int nodes,
+        const int to,
+        const int index,
+        const int bsize);
+
+void task_chunk(int* chunk,
+        const int to,
+        const int index,
+        const int bsize);
 
 #define UNUSED(x) (void)(x)

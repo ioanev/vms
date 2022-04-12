@@ -4,6 +4,7 @@
 
 #ifdef USE_OMPSS
 #include <nanos6.h>
+#include <assert.h>
 #endif
 
 
@@ -67,6 +68,22 @@ void predict_one_compound(
     perf_end("predict_one_compound");
 }
 
+void node_chunk(int* chunk,
+        const int node_id,
+        const int nodes,
+        const int to,
+        const int index,
+        const int bsize){
+    *chunk = (node_id != nodes-1) ? bsize : to-index;
+}
+
+void task_chunk(int* chunk,
+        const int to,
+        const int index,
+        const int bsize){
+    *chunk = MIN(bsize, to-index);
+}
+
 void predict_compounds(
         int start,
         int num_compounds, 
@@ -77,28 +94,30 @@ void predict_compounds(
     perf_start("predict_compounds");
 
 #ifdef USE_OMPSS
-    int num_nodes = nanos6_get_num_cluster_nodes();
-    int per_node = num_compounds / num_nodes / 100;
-    if (per_node == 0) per_node = 1;
-    printf("per node: %d\n", per_node);
-    int end = start+num_compounds;
+    const int num_tasks_per_node = 10;
+    const int num_nodes = nanos6_get_num_cluster_nodes();
+    const int num_compounds_per_node = num_compounds / num_nodes;
 
-    for (int i=start; i<end; i+=per_node)
+    for (int node_id = 0; node_id < num_nodes; ++node_id)
     {
-        int node_id = (i / per_node) % num_nodes;
-        if (i+per_node > end) per_node = end - i;
+        int num_compounds_this_node;
+        const int i = node_id * num_compounds_per_node;
+        node_chunk(&num_compounds_this_node, node_id, num_nodes, num_compounds, i, num_compounds_per_node);
 
-        #pragma oss task weakin(features[i;per_node]) weakin(*m) weakout(predictions[i;per_node]) \
+        #pragma oss task weakin(features[i;num_compounds_this_node]) weakin(*m) weakout(predictions[i;num_compounds_this_node]) \
                          node(node_id) label("outer_predict_task")
         {
+            const int num_compounds_per_task = num_compounds_this_node / num_tasks_per_node;
+            assert(num_compounds_per_task > 0);
 
-            const int chunksize = 100;
-            for(int k=i; k<i+per_node; k += chunksize)
+            for(int k = i; k < i+num_compounds_this_node; k += num_compounds_per_task)
             {
-                const int chunk_this_task = MIN(chunksize, i+per_node-k);
-                #pragma oss task in(features[k;chunk_this_task]) in(*m) out(predictions[k;chunk_this_task]) \
+                int num_compounds_this_task;
+                task_chunk(&num_compounds_this_task, i+num_compounds_this_node, k, num_compounds_per_task);
+
+                #pragma oss task in(features[k;num_compounds_this_task]) in(*m) out(predictions[k;num_compounds_this_task]) \
                                  node(nanos6_cluster_no_offload) label("inner_predict_task")
-                for (int i = k; i < k+chunk_this_task; ++i)
+                for (int i = k; i < k+num_compounds_this_task; ++i)
                     predict_one_compound(i, features[i], predictions[i], m);
             }
         } /* end weak task */

@@ -65,22 +65,20 @@ void prepare_tb_input(
 #ifdef USE_OMPSS
     const int tb_num_compounds_var = tb_num_compounds;
     const int num_nodes = nanos6_get_num_cluster_nodes();
+    const int num_compounds_per_node = num_compounds / num_nodes;
+
     for (int node_id = 0; node_id < num_nodes; ++node_id)
     {
-        const int num_compounds_per_rank = num_compounds / num_nodes;
-        const int block_start = num_compounds_per_rank * node_id;
+        int num_compounds_this_node;
+        const int i = node_id * num_compounds_per_node;
+        node_chunk(&num_compounds_this_node, node_id, num_nodes, num_compounds, i, num_compounds_per_node);
 
-        const int lo = block_start;
-        const int hi = block_start + num_compounds_per_rank;
-
-        #pragma oss task out(out[lo:hi-1]) in(in[0;tb_num_compounds_var]) \
-                         node(nanos6_cluster_no_offload) label("prepare_tb_input")
-        for (int c = lo; c < hi; c++)
+        #pragma oss task out(out[i;num_compounds_this_node]) in(in[0;tb_num_compounds_var]) \
+                         node(node_id) label("prepare_tb_input")
+        for (int c = i; c < i+num_compounds_this_node; c++)
             for (int p = 0; p < num_features; p++)
                 out[c][p] = in [c%tb_num_compounds][p];
     }
-
-#pragma oss taskwait
 #else
 
 #ifndef USE_ARGO
