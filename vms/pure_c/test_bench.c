@@ -90,8 +90,12 @@ void prepare_tb_input(
                     for (int p = 0; p < num_features; ++p)
                         out[c][p] = in [c%tb_num_compounds][p];
             }
-        }
+
+            #pragma oss taskwait
+        } /* end weak task */
     }
+
+#pragma oss taskwait
 #else
 
 #ifndef USE_ARGO
@@ -167,7 +171,7 @@ int check_result(
     const int num_tasks_per_node = 10;
     const int num_compounds_per_task = num_compounds / num_tasks_per_node;
 
-    for (int c = 0; c < num_compounds; c += num_tasks_per_node)
+    for (int c = 0; c < num_compounds; c += num_compounds_per_task)
     {
         const int num_compounds_this_task = MIN(num_compounds_per_task, num_compounds-c);
 

@@ -102,6 +102,8 @@ void predict_compounds(
                 for (int i = k; i < k+num_compounds_this_task; ++i)
                     predict_one_compound(i, features[i], predictions[i], m);
             }
+
+            #pragma oss taskwait
         } /* end weak task */
     }
 
