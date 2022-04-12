@@ -166,13 +166,16 @@ int check_result(
     if (mpi_world_rank != 0) return 0;
 
 #ifdef USE_OMPSS
-    const int chunksize = 100;
-    for (int c = 0; c < num_compounds; c += chunksize)
+    const int num_tasks_per_node = 10;
+    const int num_compounds_per_task = num_compounds / num_tasks_per_node;
+
+    for (int c = 0; c < num_compounds; c += num_tasks_per_node)
     {
-        const int chunk_this_task = MIN(chunksize, num_compounds-c);
-        #pragma oss task in(out[c;chunk_this_task]) out(errors_per_compound[c;chunk_this_task]) \
+        const int num_compounds_this_task = MIN(num_compounds_per_task, num_compounds-c);
+
+        #pragma oss task in(out[c;num_compounds_this_task]) out(errors_per_compound[c;num_compounds_this_task]) \
                          node(nanos6_cluster_no_offload) label("check_results")
-        for (int i = c; i < c+chunk_this_task; ++i)
+        for (int i = c; i < c+num_compounds_this_task; ++i)
             errors_per_compound[i] = check_compound(i, out, ref);
     }
 #pragma oss taskwait
