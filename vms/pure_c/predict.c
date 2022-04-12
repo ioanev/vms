@@ -68,22 +68,6 @@ void predict_one_compound(
     perf_end("predict_one_compound");
 }
 
-void node_chunk(int* chunk,
-        const int node_id,
-        const int nodes,
-        const int to,
-        const int index,
-        const int bsize){
-    *chunk = (node_id != nodes-1) ? bsize : to-index;
-}
-
-void task_chunk(int* chunk,
-        const int to,
-        const int index,
-        const int bsize){
-    *chunk = MIN(bsize, to-index);
-}
-
 void predict_compounds(
         int start,
         int num_compounds, 
@@ -100,9 +84,8 @@ void predict_compounds(
 
     for (int node_id = 0; node_id < num_nodes; ++node_id)
     {
-        int num_compounds_this_node;
         const int i = node_id * num_compounds_per_node;
-        node_chunk(&num_compounds_this_node, node_id, num_nodes, num_compounds, i, num_compounds_per_node);
+        const int num_compounds_this_node = (node_id != num_nodes-1) ? num_compounds_per_node : num_compounds-i;
 
         #pragma oss task weakin(features[i;num_compounds_this_node]) weakin(*m) weakout(predictions[i;num_compounds_this_node]) \
                          node(node_id) label("outer_predict_task")
@@ -112,8 +95,7 @@ void predict_compounds(
 
             for(int k = i; k < i+num_compounds_this_node; k += num_compounds_per_task)
             {
-                int num_compounds_this_task;
-                task_chunk(&num_compounds_this_task, i+num_compounds_this_node, k, num_compounds_per_task);
+                const int num_compounds_this_task = MIN(num_compounds_per_task, i+num_compounds_this_node-k);
 
                 #pragma oss task in(features[k;num_compounds_this_task]) in(*m) out(predictions[k;num_compounds_this_task]) \
                                  node(nanos6_cluster_no_offload) label("inner_predict_task")

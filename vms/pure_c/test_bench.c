@@ -71,9 +71,8 @@ void prepare_tb_input(
 
     for (int node_id = 0; node_id < num_nodes; ++node_id)
     {
-        int num_compounds_this_node;
         const int i = node_id * num_compounds_per_node;
-        node_chunk(&num_compounds_this_node, node_id, num_nodes, num_compounds, i, num_compounds_per_node);
+        const int num_compounds_this_node = (node_id != num_nodes-1) ? num_compounds_per_node : num_compounds-i;
 
         #pragma oss task weakout(out[i;num_compounds_this_node]) weakin(in[0;tb_num_compounds_var]) \
                          node(node_id) label("outer_prepare_tb_input")
@@ -83,8 +82,7 @@ void prepare_tb_input(
 
             for (int k = i; k < i+num_compounds_this_node; k += num_compounds_per_task)
             {
-                int num_compounds_this_task;
-                task_chunk(&num_compounds_this_task, i+num_compounds_this_node, k, num_compounds_per_task);
+                const int num_compounds_this_task = MIN(num_compounds_per_task, i+num_compounds_this_node-k);
 
                 #pragma oss task out(out[k;num_compounds_this_task]) in(in[0;tb_num_compounds_var]) \
                                  node(nanos6_cluster_no_offload) label("inner_prepare_tb_input")

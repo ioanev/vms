@@ -73,16 +73,4 @@ void *gaspi_malloc(int seg, unsigned long size);
 void *lmalloc(unsigned long size, int seg);
 void *dmalloc(unsigned long size, int seg);
 
-void node_chunk(int* chunk,
-        const int node_id,
-        const int nodes,
-        const int to,
-        const int index,
-        const int bsize);
-
-void task_chunk(int* chunk,
-        const int to,
-        const int index,
-        const int bsize);
-
 #define UNUSED(x) (void)(x)
