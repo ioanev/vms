@@ -52,9 +52,9 @@ float *binary_file_lmalloc(const char *fname, size_t nelem)
     return (float*)ptr;
 }
 
-//#ifdef USE_OMPSS
-//#pragma oss task out(out[0;num_compounds]) node(0) label("prepare_tb_input")
-//#endif
+#ifdef USE_OMPSS
+#pragma oss task out(out[0;num_compounds]) node(0) label("prepare_tb_input")
+#endif
 void prepare_tb_input(
     int num_compounds,
     const float in[tb_num_compounds][num_features],
@@ -62,57 +62,9 @@ void prepare_tb_input(
 {
     perf_start(__FUNCTION__);
 
-#ifdef USE_OMPSS
-    const int tb_num_compounds_var = tb_num_compounds;
-
-    const int num_tasks_per_node = 10;
-    const int num_nodes = nanos6_get_num_cluster_nodes();
-    const int num_compounds_per_node = num_compounds / num_nodes;
-
-    for (int node_id = 0; node_id < num_nodes; ++node_id)
-    {
-        const int i = node_id * num_compounds_per_node;
-        const int num_compounds_this_node = (node_id != num_nodes-1) ? num_compounds_per_node : num_compounds-i;
-
-        #pragma oss task weakout(out[i;num_compounds_this_node]) weakin(in[0;tb_num_compounds_var]) \
-                         node(node_id) label("outer_prepare_tb_input")
-        {
-            const int num_compounds_per_task = num_compounds_this_node / num_tasks_per_node;
-            assert(num_compounds_per_task > 0);
-
-            for (int k = i; k < i+num_compounds_this_node; k += num_compounds_per_task)
-            {
-                const int num_compounds_this_task = MIN(num_compounds_per_task, i+num_compounds_this_node-k);
-
-                #pragma oss task out(out[k;num_compounds_this_task]) in(in[0;tb_num_compounds_var]) \
-                                 node(nanos6_cluster_no_offload) label("inner_prepare_tb_input")
-                for (int c = k; c < k+num_compounds_this_task; ++c)
-                    for (int p = 0; p < num_features; ++p)
-                        out[c][p] = in [c%tb_num_compounds][p];
-            }
-
-            #pragma oss taskwait
-        } /* end weak task */
-    }
-
-#pragma oss taskwait
-#else
-
-#ifndef USE_ARGO
-    const int lo = 0;
-    const int hi = num_compounds;
-#else
-    const int num_compounds_per_rank = num_compounds / mpi_world_size;
-    const int block_start = num_compounds_per_rank * mpi_world_rank;
-
-    const int lo = block_start;
-    const int hi = block_start + num_compounds_per_rank;
-#endif
-
-    for (int c = lo; c < hi; c++)
+    for (int c = 0; c < num_compounds; c++)
         for (int p = 0; p < num_features; p++)
             out[c][p] = in [c%tb_num_compounds][p];
-#endif
 
     perf_end(__FUNCTION__);
 }
@@ -264,9 +216,7 @@ int main(int argc, char *argv[])
         double start = tick();
 
         mpi_world_rank_0_print("Prepare input\n");
-#ifndef USE_ARGO
         if (mpi_world_rank == 0)
-#endif
             prepare_tb_input(num_compounds, tb_input, tb_input_block);
         mpi_world_rank_0_print("Predicting\n");
 
